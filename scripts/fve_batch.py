@@ -36,6 +36,7 @@ DATA = ROOT / "data"
 F_FONDI = DATA / "lista_fondi.csv"
 F_ETF = DATA / "lista_etf.csv"
 F_REGOLE = DATA / "regole_categorie.csv"
+F_REGOLE_NOMI = DATA / "regole_nomi.csv"
 F_ANAG = DATA / "anagrafica.csv"
 F_CAT = DATA / "catalogo_portfoliosuite.csv"
 OUT_JSON = DATA / "fondi_vs_etf.json"
@@ -123,9 +124,14 @@ def leggi_regole() -> list[tuple[str, list[list[str]], list[str]]]:
     return regole
 
 
-SEGMENTI_PS = {("azionario", "usa"): "Azionario USA large cap", ("azionario", "europa"): "Azionario Europa large cap",
-               ("azionario", "globale"): "Azionario globale", ("azionario", "emergenti"): "Azionario emergenti",
-               ("azionario", "italia"): "Azionario Italia"}
+def leggi_regole_nomi() -> list[dict]:
+    """Regole per ricavare la categoria dal nome del fondo, nell'ordine del file (vince la prima che corrisponde)."""
+    out = []
+    for i, r in enumerate(leggi_csv(F_REGOLE_NOMI), start=2):
+        out.append({"riga": i, "categoria": r["categoria"], "inc": re.compile(r["includi"]),
+                    "esc": re.compile(r["escludi"]) if r.get("escludi") else None,
+                    "copertura": (r.get("copertura") or "").upper()})
+    return out
 
 
 def mappa_categoria(cat_fonte: str, regole) -> str | None:
@@ -136,6 +142,35 @@ def mappa_categoria(cat_fonte: str, regole) -> str | None:
         if all(any(a in c for a in alt) for alt in inc) and not any(e in c for e in esc):
             return nome
     return None
+
+
+# frasi che non descrivono il fondo (ombrelli SICAV, sigle di classe) e confondono le regole sul nome
+_RUMORE_NOMI = [r" blackrock global funds ", r" franklin templeton global funds plc ", r" robeco capital growth funds ",
+                r" lux (bdh|bd|bh|b) "]
+
+
+def testo_nome(*nomi: str) -> str:
+    """Nomi del fondo normalizzati per le regole: minuscolo, solo lettere, cifre e '&', spazi singoli."""
+    t = " " + re.sub(r"\s+", " ", re.sub(r"[^a-z0-9&]+", " ", " ".join(n for n in nomi if n).lower())).strip() + " "
+    for r in _RUMORE_NOMI:
+        t = re.sub(r, " lux " if "lux" in r else " ", t)
+    return t
+
+
+_ALTRA_COPERTURA = re.compile(r" (usd|chf|gbp|rmb|cnh|jpy|sgd|aud|hkd)[ -]?(h|h1|h2|hdg|hedged) | h (usd|chf|gbp) ")
+
+
+def categoria_da_nome(testo: str, hedged: bool, regole_nomi: list[dict]) -> tuple[str, int] | tuple[None, None]:
+    """Categoria dal nome; vince la prima regola che corrisponde. La copertura della classe deve corrispondere:
+    EUR = classe coperta in euro, NO = classe non coperta, vuoto = indifferente."""
+    eur_h = hedged and not _ALTRA_COPERTURA.search(testo)
+    for r in regole_nomi:
+        if not r["inc"].search(testo) or (r["esc"] and r["esc"].search(testo)):
+            continue
+        if (r["copertura"] == "EUR" and not eur_h) or (r["copertura"] == "NO" and hedged):
+            continue
+        return r["categoria"], r["riga"]
+    return None, None
 
 
 # ------------------------------------------------------------------ euristiche sul nome
@@ -158,8 +193,12 @@ def classe_da_nome(nome: str) -> str | None:
 
 
 def hedged_da_nome(nome: str) -> bool:
+    """Classe con copertura valutaria. Oltre a 'hedged'/'hdg' riconosce le sigle di classe usate dalle società
+    (HR Pictet, H1 Franklin, H2 Allianz, Bh/Bdh Capital Group, DH/BxH Robeco, LCH/NCH/LDH DWS, EURH, PfH, ' H ')."""
     n = _norm(nome)
-    return bool(re.search(r" (hedged|hdg|h eur|eur h|hedge) ", n)) or bool(re.search(r"[-\s]h[-\s]", " " + nome.lower() + " ") and " eur " in n)
+    if re.search(r" (hedged|hdg|hedge|hr|h1|h2|bh|bdh|dh|bxh|lch|nch|ldh|ndh|ldhq|pfh|h) ", n):
+        return True
+    return bool(re.search(r"(eur|usd|chf|gbp)h(acc|inc|dis|ad)? ", n)) or bool(re.search(r" h(eur|usd|chf) ", n))
 
 
 def nome_base(nome: str) -> str:
@@ -586,9 +625,11 @@ def main():
     else:
         y = Yahoo()
         regole = leggi_regole()
+        regole_nomi = leggi_regole_nomi()
         lista_f = {r["isin"]: r for r in leggi_csv(F_FONDI)}
         lista_e = {r["isin"]: r for r in leggi_csv(F_ETF)}
         anag = leggi_anagrafica()
+        cat_etf = {r["categoria"] for r in lista_e.values() if r.get("categoria")}
 
         # 1) anagrafica, con budget di tempo: quello che non finisce oggi riparte al prossimo giro
         catal = {r["isin"]: r for r in leggi_csv(F_CAT)}
@@ -625,29 +666,37 @@ def main():
             ps = catal.get(isin, {})
             nome = (ps.get("nome_completo") or v.get("nome_fonte") or riga.get("nome") or isin) if tipo == "ETF" \
                 else (riga.get("nome") or ps.get("nome_completo") or v.get("nome_fonte") or isin)
-            cat_approx = False
+            hedged = riga["hedged"].upper() in ("SI", "SÌ", "YES", "1") if riga.get("hedged") \
+                else hedged_da_nome(nome + " " + (v.get("nome_fonte") or ""))
+            cat_approx, cat_fonte = False, v.get("categoria_fonte", "")
             if tipo == "ETF":
                 cat = riga.get("categoria")
             else:
-                cat = riga.get("categoria") or mappa_categoria(v.get("categoria_fonte", ""), regole)
-                if not cat and not v.get("categoria_fonte"):
-                    cat = SEGMENTI_PS.get((ps.get("asset_class"), ps.get("segmento")))
-                    cat_approx = bool(cat)
+                # priorità: categoria scritta a mano > categoria Morningstar (Yahoo) > regole sul nome del fondo
+                cat = riga.get("categoria") or mappa_categoria(cat_fonte, regole)
+                if not cat and not cat_fonte:
+                    testo = testo_nome(riga.get("nome", ""), ps.get("nome_completo", ""), v.get("nome_fonte", ""))
+                    cat, n_regola = categoria_da_nome(testo, hedged, regole_nomi)
+                    if cat:
+                        cat_approx, cat_fonte = True, f"categoria dal nome del fondo (regole_nomi.csv, riga {n_regola})"
+                if not motivo and cat and cat not in cat_etf:
+                    non_mappate[cat] += 1
+                    continue  # nessun ETF della lista in questa categoria: fuori perimetro, conteggiata a parte
                 if not motivo and not cat:
-                    if v.get("categoria_fonte"):
-                        non_mappate[v["categoria_fonte"]] += 1
+                    if cat_fonte:
+                        non_mappate[cat_fonte] += 1
                         continue  # categoria senza ETF confrontabile: fuori perimetro, conteggiata a parte
-                    motivo = "categoria non disponibile nella fonte (si può indicare a mano in lista_fondi.csv)"
+                    motivo = ("categoria non riconoscibile né dalla fonte né dal nome "
+                              "(si può indicare a mano in lista_fondi.csv)")
             if motivo:
                 non_trovati.append({"isin": isin, "nome": nome if nome != isin else "", "tipo": tipo, "categoria": cat or "", "motivo": motivo})
                 continue
             # priorità: correzione a mano in lista > catalogo PortfolioSuite > Yahoo
             ter = num(riga.get("ter")) if riga.get("ter") else (num(ps.get("ter")) if ps.get("ter") else num(v.get("ter_fonte")))
             classe = (riga.get("classe") or "").upper() or ps.get("classe") or classe_da_nome(nome)
-            hedged = riga["hedged"].upper() in ("SI", "SÌ", "YES", "1") if riga.get("hedged") else hedged_da_nome(nome)
             strumenti.append(dict(isin=isin, tipo=tipo, nome=nome, categoria=cat, ter=ter, classe=classe or None,
                                   hedged=hedged, ticker=v["ticker"],
-                                  categoria_fonte=v.get("categoria_fonte", "") or (f"segmento PortfolioSuite: {ps.get('segmento')}" if cat_approx else ""),
+                                  categoria_fonte=cat_fonte,
                                   categoria_approssimata=cat_approx, societa=ps.get("societa", ""),
                                   nome_dedup=v.get("nome_fonte") or nome,  # stessa fonte per tutte le classi
                                   istituzionale=ps.get("istituzionale") == "SI",

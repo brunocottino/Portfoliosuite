@@ -9,9 +9,10 @@ Gratis: dati da Yahoo Finance e BCE, calcolo su GitHub Actions, nessun token, ne
 |---|---|
 | `fondi-vs-etf.html` | La pagina. Legge `data/fondi_vs_etf.json`; se manca, mostra i dati demo con un avviso. |
 | `data/lista_fondi.csv` | 1.839 ISIN di fondi. Colonne facoltative per correzioni a mano: nome, categoria, ter, classe, hedged. |
-| `data/lista_etf.csv` | 141 ETF; 50 hanno una categoria di confronto. Un ETF senza categoria non viene usato. |
+| `data/lista_etf.csv` | 141 ETF; 65 hanno una categoria di confronto. Un ETF senza categoria non viene usato. |
 | `data/catalogo_portfoliosuite.csv` | Anagrafica già raccolta in PortfolioSuite (1.056 fondi, 134 ETF): nome completo, società, TER, classe Acc/Dist, valuta, segmento, classe istituzionale. Ha la precedenza su Yahoo. |
 | `data/regole_categorie.csv` | Come la categoria Morningstar di un fondo diventa una categoria della pagina. |
+| `data/regole_nomi.csv` | Come il nome del fondo diventa una categoria della pagina, quando la categoria Morningstar manca. |
 | `scripts/fve_metrics.py` | Le formule (rendimenti, alfa/beta, tracking error, IR, finestre 12m, persistenza). |
 | `scripts/fve_batch.py` | Il batch: anagrafica, prezzi, conversione in EUR, una classe per fondo, calcolo, JSON. |
 | `tests/test_metrics.py` | 8 test su casi con risultato noto. Girano prima di ogni aggiornamento. |
@@ -32,7 +33,9 @@ Gratis: dati da Yahoo Finance e BCE, calcolo su GitHub Actions, nessun token, ne
 
 - Il JSON contiene anche i campi che PortfolioSuite già legge (`aggiornato`, `categorie[].label`, per fondo `beta`, `te` in %, `ir`, `x3`, `x5` in punti, `win12` in %). Basta incollare l'indirizzo di `data/fondi_vs_etf.json` nel campo dati Fondi vs ETF di PortfolioSuite: la scelta del satellite (IR ≥ 0,3, TE 2–6%, beta 0,9–1,1) usa questi numeri.
 - La pagina accetta `?emb=1&src=<url del JSON>` per stare dentro la scheda di PortfolioSuite e comunica la propria altezza.
-- Priorità dei dati anagrafici: correzione a mano nelle liste > catalogo PortfolioSuite > Yahoo Finance. Per le categorie: Morningstar via Yahoo; se manca, il segmento PortfolioSuite solo per azionario USA, Europa, globale, emergenti e Italia (segnalato in pagina come "categoria approssimata").
+- Priorità dei dati anagrafici: correzione a mano nelle liste > catalogo PortfolioSuite > Yahoo Finance. Per le categorie: categoria scritta a mano in `lista_fondi.csv` > categoria Morningstar via Yahoo > regole sul nome del fondo in `data/regole_nomi.csv` (segnalato in pagina come "categoria dal nome"). Yahoo oggi non fornisce la categoria per i fondi europei, quindi in pratica decidono le regole sul nome.
+- `data/regole_nomi.csv`: una riga per regola, la prima che corrisponde vince. `includi` ed `escludi` sono espressioni regolari sul nome in minuscolo; `copertura` = `EUR` (solo classi coperte in euro), `NO` (solo classi non coperte) o vuoto. Le regole in fondo al file ("nessun ETF in lista") non producono confronti: contano i fondi per i quali manca un ETF nella lista ETF e finiscono in `categorie_non_mappate.csv`.
+- Un fondo viene confrontato solo con un ETF della stessa categoria e, se possibile, con la stessa copertura valutaria. Le classi coperte vengono riconosciute anche dalle sigle delle società (HR, H1, H2, Bh, DH, LCH, EURH...).
 
 ## Regole anti-dato-inventato
 

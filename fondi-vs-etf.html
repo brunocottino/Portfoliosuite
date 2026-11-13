@@ -320,7 +320,7 @@ function renderTable(c){
     const badges = [];
     const fd = (f.flags||[]).find(t => /distribuzione/.test(t));
     if (fd) badges.push(h("span", {class:"badge", title:fd, text: /assenti/.test(fd) ? "distribuzione, dividendi assenti" : "solo distribuzione"}));
-    if (f.categoria_approssimata) badges.push(h("span", {class:"badge", title:"Categoria Morningstar non disponibile: usato il segmento di PortfolioSuite", text:"categoria approssimata"}));
+    if (f.categoria_approssimata) badges.push(h("span", {class:"badge", title:"Categoria Morningstar non disponibile: ricavata dal nome del fondo con le regole di data/regole_nomi.csv", text:"categoria dal nome"}));
     if ((f.flags||[]).some(t => /classe non/.test(t))) badges.push(h("span", {class:"badge", text:"classe non determinata"}));
     if (f.hedged) badges.push(h("span", {class: (f.flags||[]).some(t => /copertura/.test(t)) ? "badge" : "badge neutral", text:"coperta cambio"}));
     if (f.alfa_t != null && Math.abs(f.alfa_t) >= 2) badges.push(h("span", {class: f.alfa_t > 0 ? "badge ok" : "badge bad", text: f.alfa_t > 0 ? "alfa significativo" : "alfa negativo significativo"}));
