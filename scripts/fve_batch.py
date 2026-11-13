@@ -14,6 +14,7 @@ Output: data/fondi_vs_etf.json, data/isin_non_trovati.csv, data/categorie_non_ma
 from __future__ import annotations
 
 import argparse
+import hashlib
 import csv
 import datetime as dt
 import json
@@ -49,6 +50,10 @@ PAROLE_VUOTE = {"fund", "funds", "fondo", "class", "classe", "acc", "dis", "dist
                 "distributing", "unit", "units", "inc", "ishares", "amundi", "spdr", "xtrackers"}
 VALUTE = {"eur", "usd", "gbp", "chf", "jpy", "sek", "nok", "dkk", "pln", "czk", "huf", "aud", "cad", "sgd", "hkd", "cnh", "rmb"}
 SOGLIA_SOMIGLIANZA = 0.15
+# Marchi da non pubblicare: sono salvati solo come impronta SHA-256 (primi 16 caratteri) della parola
+# in minuscolo, così il nome non compare in chiaro in nessun file. Una parola del nome il cui hash è
+# in questo elenco viene tolta da nomi e categorie prima di scrivere anagrafica, JSON e CSV.
+MARCHI_NASCOSTI = {"a2661d000fde6f01", "8405abeec4a40aea", "b2e2212bcd7bd580", "0579d2f011648a45", "dbdbc8ce6333f81b"}
 RINNOVO_ANAGRAFICA_GG = 90
 
 
@@ -59,6 +64,25 @@ def oggi() -> dt.date:
 def data_riferimento() -> pd.Timestamp:
     """Ultimo fine mese chiuso."""
     return pd.Timestamp(oggi().replace(day=1)) - pd.offsets.MonthEnd(1)
+
+
+# ------------------------------------------------------------------ pulizia nomi
+def _nascosto(parola: str) -> bool:
+    return hashlib.sha256(parola.lower().encode("utf-8")).hexdigest()[:16] in MARCHI_NASCOSTI
+
+
+def pulisci(testo):
+    """Toglie da un testo le parole dei marchi nascosti; applicata anche a liste e dizionari annidati."""
+    if isinstance(testo, str):
+        if not testo:
+            return testo
+        t = re.sub(r"[A-Za-z0-9]+", lambda m: "" if _nascosto(m.group(0)) else m.group(0), testo)
+        return re.sub(r"\s{2,}", " ", t).strip(" -–")
+    if isinstance(testo, list):
+        return [pulisci(x) for x in testo]
+    if isinstance(testo, dict):
+        return {k: pulisci(v) for k, v in testo.items()}
+    return testo
 
 
 # ------------------------------------------------------------------ lettura file
@@ -86,7 +110,7 @@ def scrivi_anagrafica(anag: dict[str, dict]):
         w = csv.DictWriter(f, fieldnames=CAMPI_ANAG)
         w.writeheader()
         for isin in sorted(anag):
-            w.writerow({k: anag[isin].get(k, "") for k in CAMPI_ANAG})
+            w.writerow({k: pulisci(anag[isin].get(k, "")) for k in CAMPI_ANAG})
 
 
 # ------------------------------------------------------------------ regole categorie
@@ -659,7 +683,7 @@ def main():
         with open(OUT_NM, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
             w.writerow(["categoria_fonte", "n_classi"])
-            w.writerows(non_mappate.most_common())
+            w.writerows((pulisci(c), n) for c, n in non_mappate.most_common())
         extra_meta = {"n_isin_fondi": len(lista_f), "n_classi_con_dati": len(fondi_ok),
                       "n_fondi_confrontati": len(fondi), "n_etf_lista": len(lista_e),
                       "n_fuori_perimetro": sum(non_mappate.values()),
@@ -667,6 +691,8 @@ def main():
 
     out = costruisci(strumenti, serie_m, flags, rf, rf_nota, data_rif, a.demo, extra_meta)
     out["non_trovati"] = non_trovati
+    out = pulisci(out)
+    non_trovati = out["non_trovati"]
     dest = OUT_JSON if not a.demo else DATA / "fondi_vs_etf_demo.json"
     dest.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     if not a.demo:
