@@ -1,0 +1,58 @@
+name: Fondi vs ETF (aggiornamento)
+
+on:
+  schedule:
+    - cron: "17 5 * * *"   # ogni giorno 05:17 UTC: calcolo completo il sabato,
+                           # negli altri giorni solo se l'anagrafica non è ancora completa
+  workflow_dispatch: {}     # avvio manuale dal tab Actions
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fondi-vs-etf
+  cancel-in-progress: false
+
+jobs:
+  aggiorna:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Serve un aggiornamento oggi?
+        id: guard
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$(date -u +%u)" = "6" ]; then
+            echo "run=1" >> "$GITHUB_OUTPUT"
+          elif python3 -c "import json,sys; m=json.load(open('data/fondi_vs_etf.json'))['meta']; sys.exit(0 if m.get('anagrafica_completa') else 1)" 2>/dev/null; then
+            echo "run=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.guard.outputs.run == '1'
+        with:
+          python-version: "3.12"
+
+      - name: Dipendenze
+        if: steps.guard.outputs.run == '1'
+        run: pip install "yfinance>=0.2.54" pandas numpy requests
+
+      - name: Test metriche
+        if: steps.guard.outputs.run == '1'
+        run: python tests/test_metrics.py
+
+      - name: Calcolo
+        if: steps.guard.outputs.run == '1'
+        run: python scripts/fve_batch.py --budget-min 200
+
+      - name: Salva risultati
+        if: always() && steps.guard.outputs.run == '1'
+        run: |
+          git config user.name "fondi-vs-etf-bot"
+          git config user.email "actions@users.noreply.github.com"
+          for f in data/anagrafica.csv data/fondi_vs_etf.json data/isin_non_trovati.csv data/categorie_non_mappate.csv; do [ -f "$f" ] && git add "$f"; done
+          git diff --cached --quiet || git commit -m "Fondi vs ETF: aggiornamento $(date -u +%F)"
+          git push

@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fondi vs ETF</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: colonna unica da analista — sintesi in alto, poi selettore, tabella, grafico, persistenza, avvertenze. */
+:root{
+  --bg:#f6f7f8; --surface:#ffffff; --ink:#0f1720; --ink-2:#4a5562; --muted:#7f8a96;
+  --line:#e2e6ea; --line-2:#cdd3d9; --accent:#1f5fae; --accent-soft:#e6eef8;
+  --pos:#0b6b2e; --pos-bg:#e3f3e8; --pos-bg-2:#c6e8d1;
+  --neg:#b42323; --neg-bg:#fbe7e6; --neg-bg-2:#f5cbc8;
+  --warn-bg:#fff4d6; --warn-ink:#6b4a00;
+  --series-hi:#2a78d6; --series-lo:#b9c1ca; --zero:#4a5562;
+  --seq-ink-hi:#ffffff; --seq-0:#f0f3f6; --seq-1:#cde2fb; --seq-2:#86b6ef; --seq-3:#3987e5; --seq-4:#1c5cab;
+  --f-sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1215; --surface:#171b20; --ink:#eef1f4; --ink-2:#b7c0c9; --muted:#87919b;
+  --line:#262c33; --line-2:#36404a; --accent:#6ea6ec; --accent-soft:#1a2a3e;
+  --pos:#5fd38a; --pos-bg:#123321; --pos-bg-2:#1b4a2f;
+  --neg:#ff8a80; --neg-bg:#3a1716; --neg-bg-2:#552220;
+  --warn-bg:#3a2e0e; --warn-ink:#f3d58a;
+  --series-hi:#3987e5; --series-lo:#3f4852; --zero:#b7c0c9;
+  --seq-ink-hi:#0b0b0b; --seq-0:#1d2329; --seq-1:#184f95; --seq-2:#256abf; --seq-3:#3987e5; --seq-4:#86b6ef;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1215; --surface:#171b20; --ink:#eef1f4; --ink-2:#b7c0c9; --muted:#87919b;
+  --line:#262c33; --line-2:#36404a; --accent:#6ea6ec; --accent-soft:#1a2a3e;
+  --pos:#5fd38a; --pos-bg:#123321; --pos-bg-2:#1b4a2f;
+  --neg:#ff8a80; --neg-bg:#3a1716; --neg-bg-2:#552220;
+  --warn-bg:#3a2e0e; --warn-ink:#f3d58a;
+  --series-hi:#3987e5; --series-lo:#3f4852; --zero:#b7c0c9;
+  --seq-ink-hi:#0b0b0b; --seq-0:#1d2329; --seq-1:#184f95; --seq-2:#256abf; --seq-3:#3987e5; --seq-4:#86b6ef;
+  color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-sans)}
+.wrap{max-width:1180px;margin:0 auto;padding-block:20px 48px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:22px}
+a{color:var(--accent)}
+h1{font-size:28px;line-height:1.15;margin:0;font-weight:600;letter-spacing:-.01em;text-wrap:balance}
+h2{font-size:18px;margin:0;font-weight:600;text-wrap:balance}
+h3{font-size:13px;margin:0;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-2)}
+.num,.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)} .small{font-size:13px}
+.top{display:flex;flex-direction:column;gap:6px}
+.crumb{font-size:13px}
+.lede{color:var(--ink-2);max-width:68ch;margin:0}
+.meta{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:12.5px;color:var(--muted)}
+.banner{background:var(--warn-bg);color:var(--warn-ink);border-radius:var(--r);padding:10px 14px;font-size:14px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.tile{display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+.tile .h{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.tile .v{font-size:24px;font-weight:500;font-family:var(--f-mono)}
+.tile .v small{font-size:14px;color:var(--muted);font-weight:400}
+.bar{height:6px;border-radius:3px;background:var(--neg-bg-2);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--pos);border-radius:3px 0 0 3px}
+.tile .s{font-size:12.5px;color:var(--ink-2)}
+@media (max-width:640px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.tile .v{font-size:20px}}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.controls label{font-size:13px;color:var(--ink-2)}
+select,button{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r);padding:7px 10px}
+button{cursor:pointer}
+button:focus-visible,select:focus-visible,tr:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden}
+.seg button{border:0;border-radius:0;padding:7px 12px;background:transparent;color:var(--ink-2)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink);font-weight:500}
+.etf{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,2fr);gap:14px;align-items:start}
+@media (max-width:760px){.etf{grid-template-columns:1fr}}
+.kv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.kv div{display:flex;flex-direction:column;gap:2px;padding:8px;background:var(--bg);border-radius:4px}
+.kv span:first-child{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.notes{margin:0;padding-left:18px;font-size:13px;color:var(--ink-2)}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r)}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:13.5px;background:var(--surface)}
+th,td{padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+th{font-weight:500;color:var(--ink-2);font-size:12px;position:sticky;top:0;background:var(--surface);vertical-align:bottom}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--surface);z-index:1;white-space:normal;min-width:190px;max-width:260px}
+tbody tr{cursor:pointer}
+tbody tr:hover td{background:var(--bg)}
+tbody tr.sel td{background:var(--accent-soft)}
+tbody tr:last-child td{border-bottom:0}
+td.pos{color:var(--pos);background:var(--pos-bg)} td.pos.strong{background:var(--pos-bg-2)}
+td.neg{color:var(--neg);background:var(--neg-bg)} td.neg.strong{background:var(--neg-bg-2)}
+tbody tr.sel td.pos,tbody tr:hover td.pos{background:var(--pos-bg-2)}
+tbody tr.sel td.neg,tbody tr:hover td.neg{background:var(--neg-bg-2)}
+td .sub{display:block;font-size:11.5px;color:var(--muted);font-family:var(--f-sans)}
+.fname{font-weight:500}
+.badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+.badge{font-size:11px;padding:1px 6px;border-radius:999px;background:var(--warn-bg);color:var(--warn-ink);font-family:var(--f-sans)}
+.badge.neutral{background:var(--bg);color:var(--ink-2);border:1px solid var(--line)}
+.badge.ok{background:var(--pos-bg);color:var(--pos)}
+.badge.bad{background:var(--neg-bg);color:var(--neg)}
+.grp{border-left:1px solid var(--line)}
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r);padding:8px 10px;font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.12);min-width:220px;max-width:300px}
+.tip .row{display:flex;gap:10px;align-items:center;justify-content:space-between;white-space:nowrap}
+.tip .row b{font-family:var(--f-mono);font-weight:500}
+.tip .key{display:inline-block;width:12px;height:2px;margin-right:6px;vertical-align:middle}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--ink-2)}
+.legend i{display:inline-block;width:16px;height:2px;margin-right:6px;vertical-align:middle}
+.pers{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media (max-width:760px){.pers{grid-template-columns:1fr}}
+.mx{border-collapse:separate;border-spacing:2px;font-size:13px;width:auto}
+.mx th,.mx td{border:0;padding:6px 8px;text-align:center;position:static;min-width:0;background:transparent}
+.mx td{font-family:var(--f-mono);border-radius:3px;min-width:46px}
+.mx th{font-size:11.5px}
+details{font-size:14px;color:var(--ink-2)}
+details summary{cursor:pointer;color:var(--ink);font-weight:500}
+.warn-list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--ink-2)}
+.warn-list b{color:var(--ink)}
+.empty{padding:24px;text-align:center;color:var(--muted)}
+@media (max-width:560px){th:first-child,td:first-child{min-width:150px;max-width:170px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <header class="top">
+    <div class="crumb"><a href="index.html">← PortfolioSuite</a></div>
+    <h1>Fondi vs ETF</h1>
+    <p class="lede">Ogni fondo attivo della lista confrontato con l'ETF più economico della sua categoria, in euro e a dividendi reinvestiti. Una sola classe per fondo; il confronto conta solo i periodi in cui entrambi hanno storico.</p>
+    <div class="meta" id="meta"></div>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+
+  <section class="panel" aria-labelledby="h-glob">
+    <h2 id="h-glob">Quanti fondi battono l'ETF, tutta la lista</h2>
+    <div class="tiles" id="glob"></div>
+  </section>
+
+  <div class="controls">
+    <label for="cat">Categoria</label>
+    <select id="cat"></select>
+    <span class="seg" role="group" aria-label="Valori in tabella">
+      <button id="v-extra" aria-pressed="true">Extra-rendimento</button>
+      <button id="v-rend" aria-pressed="false">Rendimento fondo</button>
+    </span>
+  </div>
+
+  <section class="panel" aria-labelledby="h-cat">
+    <h2 id="h-cat">Categoria</h2>
+    <div class="tiles" id="cat-tiles"></div>
+    <div class="etf">
+      <div>
+        <h3>ETF di riferimento</h3>
+        <div id="etf-name" class="fname" style="margin-top:6px"></div>
+        <div id="etf-sub" class="small muted"></div>
+      </div>
+      <div class="kv" id="etf-kv"></div>
+    </div>
+    <ul class="notes" id="cat-notes"></ul>
+  </section>
+
+  <section class="panel" aria-labelledby="h-tab">
+    <h2 id="h-tab">Fondi della categoria</h2>
+    <p class="small muted" style="margin:0">Rendimenti annualizzati. Verde = il fondo ha fatto meglio dell'ETF, rosso = peggio; tinta più forte oltre ±2 punti. Tocca una riga per vederla nel grafico.</p>
+    <div class="tbl-wrap"><table id="tbl"></table></div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-roll">
+    <h2 id="h-roll">Extra-rendimento su 12 mesi mobili</h2>
+    <p class="small muted" style="margin:0">Rendimento del fondo negli ultimi 12 mesi meno quello dell'ETF, mese per mese. Sopra lo zero il fondo stava battendo l'ETF.</p>
+    <div class="legend" id="legend"></div>
+    <div class="chart" id="chart"><div class="tip" id="tip" hidden></div></div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-pers">
+    <h2 id="h-pers">Persistenza: il quartile di ieri predice quello di domani?</h2>
+    <p class="small muted" style="margin:0">Righe: quartile per extra-rendimento nei 3 anni prima della data di formazione. Colonne: quartile nei 3 anni dopo. Se non ci fosse persistenza ogni riga si distribuirebbe circa al 25% per colonna.</p>
+    <div class="pers">
+      <div><h3 id="pers-cat-h">Questa categoria</h3><div id="pers-cat"></div></div>
+      <div><h3>Tutte le categorie</h3><div id="pers-glob"></div></div>
+    </div>
+  </section>
+
+  <section class="panel" id="nf-panel" aria-labelledby="h-nf" hidden>
+    <h2 id="h-nf">ISIN senza dati</h2>
+    <p class="small muted" style="margin:0">Questi strumenti sono nel campione ma non entrano nei calcoli. Nessun dato è stato stimato al loro posto.</p>
+    <div class="tbl-wrap"><table id="nf"></table></div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-warn">
+    <h2 id="h-warn">Avvertenze</h2>
+    <ul class="warn-list">
+      <li><b>Survivorship bias.</b> La lista contiene solo fondi oggi in vita. I fondi chiusi o fusi, di solito quelli andati peggio, non compaiono: il risultato dei fondi è quindi sovrastimato.</li>
+      <li><b>Campione ridotto per la persistenza.</b> Poche decine di fondi e date di formazione a passo annuale con finestre sovrapposte: la matrice è indicativa, non un test statistico.</li>
+      <li><b>Rendimenti passati.</b> I rendimenti passati non sono indicativi di quelli futuri.</li>
+      <li><b>Dati indicativi.</b> Prezzi da fonti pubbliche gratuite, non verificati con le schede ufficiali. Le classi a distribuzione e quelle con copertura valutaria sono segnalate perché il confronto è distorto.</li>
+    </ul>
+    <details>
+      <summary>Metodo di calcolo</summary>
+      <ul class="warn-list" style="margin-top:8px">
+        <li>Prezzi giornalieri di chiusura rettificati per dividendi e split, convertiti in EUR al cambio del giorno, poi ultimo prezzo di ogni mese fino all'ultimo fine mese chiuso.</li>
+        <li>Rendimento annualizzato a 1, 3, 5, 10 anni: (P<sub>fine</sub>/P<sub>inizio</sub>)<sup>1/anni</sup> − 1, solo se lo storico copre tutto il periodo. Extra-rendimento = fondo − ETF sullo stesso periodo.</li>
+        <li>Alfa e beta: regressione OLS sugli ultimi 120 mesi in comune (minimo 36) dei rendimenti mensili in eccesso sul tasso privo di rischio: (r<sub>fondo</sub> − rf) = α + β (r<sub>ETF</sub> − rf). Alfa annualizzato = α × 12; t-stat da errori standard OLS. |t| ≥ 2 è segnalato come alfa significativo.</li>
+        <li>Tracking error = deviazione standard dei rendimenti mensili attivi × √12. Information ratio = media attiva × 12 / tracking error.</li>
+        <li>Finestre di 12 mesi: quota dei mesi in cui il rendimento a 12 mesi del fondo supera quello dell'ETF, sugli ultimi 120 mesi.</li>
+        <li>Persistenza: date di formazione a 3, 4, 5, 6, 7 anni fa. Quartile per extra-rendimento annualizzato nei 36 mesi prima e nei 36 mesi dopo; servono almeno 4 fondi con storico completo. Classi a distribuzione escluse. ρ = correlazione di Spearman media tra i due ranking.</li>
+        <li>Categorie: la categoria Morningstar di ogni fondo (riportata da Yahoo Finance) è ricondotta a una categoria della pagina con regole fisse (file regole_categorie.csv). I fondi di categorie senza un ETF confrontabile in lista (flessibili, bilanciati, ecc.) restano fuori e sono solo conteggiati.</li>
+        <li>Una classe per fondo: tra le classi dello stesso fondo nella stessa categoria si tiene quella ad accumulo, non coperta, in EUR, con TER più basso e storico più lungo. Le altre sono escluse per non contare due volte lo stesso gestore.</li>
+        <li>ETF di riferimento: tra gli ETF della lista nella categoria, quello con la stessa copertura valutaria del fondo, ad accumulo (o a distribuzione con dividendi presenti nella fonte), con TER più basso; a parità, storico più lungo. I fondi coperti dal cambio si confrontano con l'ETF coperto, se c'è.</li>
+        <li>TER: spese annue riportate dalla fonte pubblica; possono differire dalle spese correnti del KID.</li>
+      </ul>
+    </details>
+  </section>
+</div>
+
+<script>
+(() => {
+"use strict";
+const ORIZ = ["1","3","5","10"];
+const state = { data:null, cat:0, view:"extra", sel:null };
+const $ = id => document.getElementById(id);
+
+function h(tag, attrs, ...kids){
+  const el = document.createElement(tag);
+  if (attrs) for (const [k,v] of Object.entries(attrs)){
+    if (v == null || v === false) continue;
+    if (k === "class") el.className = v; else if (k === "text") el.textContent = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v); else el.setAttribute(k, v);
+  }
+  for (const c of kids.flat()) if (c != null) el.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return el;
+}
+const pct = (x, d=1, sign=false) => x == null ? "—" : (sign && x > 0 ? "+" : "") + (x*100).toFixed(d).replace(".", ",").replace("-", "−") + "%";
+const pp  = (x, d=1) => x == null ? "—" : (x > 0 ? "+" : "") + (x*100).toFixed(d).replace(".", ",").replace("-", "−") + " pt";
+const n2  = (x, d=2) => x == null ? "—" : x.toFixed(d).replace(".", ",").replace("-", "−");
+const ter = x => x == null ? "—" : x.toFixed(2).replace(".", ",") + "%";
+
+const QS = new URLSearchParams(location.search);
+const EMB = QS.get("emb") === "1";
+async function load(){
+  const urls = ["data/fondi_vs_etf.json", "data/fondi_vs_etf_demo.json"];
+  if (QS.get("src")) urls.unshift(QS.get("src"));
+  for (const url of urls){
+    try { const r = await fetch(url, {cache:"no-store"}); if (r.ok){ const j = await r.json(); if (j.categorie && j.categorie.length) return j; } } catch(e){}
+  }
+  return null;
+}
+
+function tiles(el, sintesi, label){
+  el.replaceChildren(...ORIZ.map(a => {
+    const s = sintesi[a] || {n:0,battono:0};
+    const share = s.n ? s.battono / s.n : null;
+    return h("div", {class:"tile"},
+      h("span", {class:"h", text: a === "1" ? "1 anno" : a + " anni"}),
+      h("span", {class:"v"}, s.n ? String(s.battono) : "—", h("small", null, s.n ? " / " + s.n : "")),
+      h("div", {class:"bar", role:"img", "aria-label": s.n ? `${s.battono} su ${s.n} battono l'ETF` : "nessun dato"}, h("i", {style:`width:${share==null?0:share*100}%`})),
+      h("span", {class:"s", text: s.n ? `${Math.round(share*100)}% ${label}` : "storico insufficiente"}));
+  }));
+}
+
+function renderMeta(){
+  const m = state.data.meta;
+  $("meta").replaceChildren(
+    h("span", null, "Dati al ", h("b", {class:"num", text: m.data_riferimento})),
+    h("span", {text: "Aggiornato " + m.generato}),
+    h("span", {text: `${m.n_fondi_confrontati} fondi confrontati su ${m.n_isin_fondi} ISIN in lista` + (m.n_fuori_perimetro ? `, ${m.n_fuori_perimetro} classi in categorie senza ETF` : "")}),
+    h("span", {text: "Prezzi: " + m.fonte_prezzi}),
+    h("span", {text: "Tasso privo di rischio: " + m.tasso_privo_rischio}));
+  if (!m.demo && !m.anagrafica_completa){
+    $("banner").hidden = false;
+    $("banner").textContent = `Prima raccolta dati in corso: mancano ancora ${m.n_anagrafica_mancante} ISIN, completati automaticamente nei prossimi giorni. I numeri sotto coprono solo la parte già raccolta.`;
+  }
+  if (m.demo){
+    $("banner").hidden = false;
+    $("banner").textContent = "Dati dimostrativi sintetici: fondi ed ETF inventati, numeri generati a caso per provare la pagina. Saranno sostituiti dal primo aggiornamento con le liste reali.";
+  }
+  tiles($("glob"), state.data.riepilogo, "battono l'ETF");
+}
+
+function renderCat(){
+  const c = state.data.categorie[state.cat];
+  $("h-cat").textContent = c.nome;
+  if (!c.etf){
+    $("cat-tiles").replaceChildren(); $("etf-name").textContent = "—"; $("etf-sub").textContent = ""; $("etf-kv").replaceChildren();
+    $("cat-notes").replaceChildren(...(c.note||[]).map(t => h("li", {text:t})));
+    $("tbl").replaceChildren(h("tbody", null, h("tr", null, h("td", {class:"empty", text:"Nessun ETF con dati in questa categoria."}))));
+    $("chart").querySelector("svg")?.remove(); $("legend").replaceChildren();
+    $("pers-cat").replaceChildren(h("p", {class:"small muted", text:"Non calcolabile."}));
+    return;
+  }
+  tiles($("cat-tiles"), c.sintesi, "battono l'ETF");
+  const e = c.etf;
+  $("etf-name").textContent = e.nome;
+  $("etf-sub").textContent = `${e.isin}${e.ticker ? " · " + e.ticker : ""} · TER ${ter(e.ter)} · storico dal ${e.inizio}`;
+  $("etf-kv").replaceChildren(...ORIZ.map(a => h("div", null, h("span", {text: a + "a"}), h("span", {class:"num", text: pct(e.rend[a])}))));
+  const notes = [...(c.note||[]), ...(e.flags||[]).map(f => "ETF: " + f)];
+  if (c.altri_etf && c.altri_etf.length) notes.push("Altri ETF della lista nella categoria: " + c.altri_etf.map(x => `${x.nome} (TER ${ter(x.ter)})`).join("; "));
+  (c.etf_altri_rif||[]).forEach(x => notes.push(`ETF di riferimento per i fondi con copertura valutaria: ${x.nome} (${x.isin}, TER ${ter(x.ter)}, storico dal ${x.inizio})` + (x.flags.length ? ". " + x.flags.join("; ") : "")));
+  $("cat-notes").replaceChildren(...notes.map(t => h("li", {text:t})));
+  if (!c.fondi.some(f => f.isin === state.sel)) state.sel = c.fondi[0]?.isin ?? null;
+  renderTable(c); renderChart(c); renderPers(c);
+}
+
+function cellClass(x){ if (x == null) return ""; const s = x > 0 ? "pos" : x < 0 ? "neg" : ""; return s + (Math.abs(x) >= 0.02 ? " strong" : ""); }
+
+function renderTable(c){
+  const ext = state.view === "extra";
+  const thead = h("thead", null,
+    h("tr", null,
+      h("th", {text:"Fondo"}),
+      ...ORIZ.map((a,i) => h("th", {class: i===0 ? "grp" : null, text: (ext ? "Extra " : "Rend. ") + a + "a"})),
+      h("th", {class:"grp", text:"Alfa annuo"}), h("th", {text:"t"}), h("th", {text:"Beta"}), h("th", {text:"R²"}),
+      h("th", {text:"Track. error"}), h("th", {text:"Info ratio"}),
+      h("th", {class:"grp", text:"Batte a 12m"}), h("th", {text:"Quartile prima→dopo"}),
+      h("th", {class:"grp", text:"TER"}), h("th", {text:"Δ costo"})));
+  const rows = c.fondi.map(f => {
+    const badges = [];
+    const fd = (f.flags||[]).find(t => /distribuzione/.test(t));
+    if (fd) badges.push(h("span", {class:"badge", title:fd, text: /assenti/.test(fd) ? "distribuzione, dividendi assenti" : "solo distribuzione"}));
+    if (f.categoria_approssimata) badges.push(h("span", {class:"badge", title:"Categoria Morningstar non disponibile: usato il segmento di PortfolioSuite", text:"categoria approssimata"}));
+    if ((f.flags||[]).some(t => /classe non/.test(t))) badges.push(h("span", {class:"badge", text:"classe non determinata"}));
+    if (f.hedged) badges.push(h("span", {class: (f.flags||[]).some(t => /copertura/.test(t)) ? "badge" : "badge neutral", text:"coperta cambio"}));
+    if (f.alfa_t != null && Math.abs(f.alfa_t) >= 2) badges.push(h("span", {class: f.alfa_t > 0 ? "badge ok" : "badge bad", text: f.alfa_t > 0 ? "alfa significativo" : "alfa negativo significativo"}));
+    (f.flags||[]).filter(t => !/distribuzione|copertura|classe non/.test(t)).forEach(t => badges.push(h("span", {class:"badge", title:t, text: t.length > 34 ? t.slice(0,32) + "…" : t})));
+    const vals = ORIZ.map((a,i) => {
+      const x = ext ? f.extra[a] : f.rend[a];
+      return h("td", {class: ["num", ext ? cellClass(x) : "", i===0 ? "grp" : ""].join(" "), text: ext ? pp(x) : pct(x)});
+    });
+    const q = f.quartili_ultimo;
+    const tr = h("tr", {tabindex:"0", class: f.isin === state.sel ? "sel" : null, "aria-selected": String(f.isin === state.sel),
+        onclick: () => select(f.isin), onkeydown: ev => { if (ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); select(f.isin);} }},
+      h("td", null, h("span", {class:"fname", text:f.nome}),
+        h("span", {class:"sub", text:(f.societa ? f.societa + " · " : "") + `${f.isin} · dal ${f.inizio}` + (f.classi_escluse ? ` · ${f.classi_escluse} altre classi escluse` : "")}),
+        f.categoria_fonte ? h("span", {class:"sub", text: f.categoria_fonte.replace(/^EAA Fund /, "")}) : null,
+        f.etf_rif ? h("span", {class:"sub", text: "vs " + (etfName(f.etf_rif) || f.etf_rif)}) : null,
+        badges.length ? h("div", {class:"badges"}, badges) : null),
+      ...vals,
+      h("td", {class:"num grp " + cellClass(f.alfa), text: pp(f.alfa)}),
+      h("td", {class:"num", text: n2(f.alfa_t, 1)}),
+      h("td", {class:"num", text: n2(f.beta)}),
+      h("td", {class:"num", text: n2(f.r2)}),
+      h("td", {class:"num", text: f.te == null ? "—" : n2(f.te, 1) + "%"}),
+      h("td", {class:"num", text: n2(f.ir)}),
+      h("td", {class:"num grp", text: f.pct_batte_12m == null ? "—" : Math.round(f.pct_batte_12m*100) + "%"}, h("span", {class:"sub", text: f.finestre_12m ? f.finestre_12m + " finestre" : ""})),
+      h("td", {class:"num", text: q ? `Q${q[0]} → Q${q[1]}` : "—"}),
+      h("td", {class:"num grp", text: ter(f.ter)}),
+      h("td", {class:"num", text: f.diff_costo == null ? "—" : "+" + f.diff_costo.toFixed(2).replace(".", ",") + " pt"}));
+    return tr;
+  });
+  if (!rows.length) rows.push(h("tr", null, h("td", {class:"empty", colspan:"16", text:"Nessun fondo con dati in questa categoria."})));
+  $("tbl").replaceChildren(thead, h("tbody", null, rows));
+}
+
+function etfName(isin){ const c = state.data.categorie[state.cat]; const e = (c.etf_altri_rif||[]).find(x => x.isin === isin); return e && e.nome; }
+
+function select(isin){
+  state.sel = isin;
+  const c = state.data.categorie[state.cat];
+  renderTable(c); renderChart(c);
+}
+
+/* ---------------- grafico rolling 12m (SVG) ---------------- */
+const NS = "http://www.w3.org/2000/svg";
+const s = (tag, attrs) => { const el = document.createElementNS(NS, tag); for (const [k,v] of Object.entries(attrs||{})) el.setAttribute(k, v); return el; };
+
+function renderChart(c){
+  const box = $("chart");
+  box.querySelector("svg")?.remove();
+  const tip = $("tip"); tip.hidden = true;
+  const series = c.fondi.filter(f => f.rolling && f.rolling.length).map(f => ({isin:f.isin, nome:f.nome, pts:f.rolling}));
+  const selF = series.find(x => x.isin === state.sel);
+  $("legend").replaceChildren(
+    h("span", null, h("i", {style:"background:var(--series-hi)"}), selF ? selF.nome : "fondo selezionato"),
+    h("span", null, h("i", {style:"background:var(--series-lo)"}), "altri fondi della categoria"),
+    h("span", null, h("i", {style:"background:var(--zero)"}), "zero = pari all'ETF"));
+  if (!series.length){ box.prepend(h("p", {class:"empty", text:"Storico insufficiente per le finestre di 12 mesi."})); return; }
+  box.querySelector(".empty")?.remove();
+
+  const months = [...new Set(series.flatMap(x => x.pts.map(p => p[0])))].sort();
+  const mi = Object.fromEntries(months.map((m,i) => [m,i]));
+  let lo = Math.min(0, ...series.flatMap(x => x.pts.map(p => p[1])));
+  let hi = Math.max(0, ...series.flatMap(x => x.pts.map(p => p[1])));
+  const step = niceStep((hi - lo) / 5);
+  lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+
+  const W = Math.max(320, box.clientWidth || 800), H = W < 560 ? 260 : 320;
+  const m = {l:52, r:12, t:10, b:28};
+  const x = i => m.l + (months.length > 1 ? i / (months.length - 1) : 0) * (W - m.l - m.r);
+  const y = v => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
+  const svg = s("svg", {viewBox:`0 0 ${W} ${H}`, role:"img", "aria-label":"Extra-rendimento su 12 mesi mobili dei fondi della categoria"});
+
+  for (let v = lo; v <= hi + 1e-9; v += step){
+    svg.append(s("line", {x1:m.l, x2:W-m.r, y1:y(v), y2:y(v), stroke:"var(--line)", "stroke-width":1}));
+    const t = s("text", {x:m.l-8, y:y(v)+4, "text-anchor":"end", "font-size":11, fill:"var(--muted)", "font-family":"var(--f-mono)"});
+    t.textContent = (v > 0 ? "+" : "") + Math.round(v*100) + "%"; svg.append(t);
+  }
+  const years = months.filter(mm => mm.endsWith("-12"));
+  const every = Math.ceil(years.length / (W < 560 ? 4 : 10));
+  years.forEach((mm, k) => { if (k % every) return;
+    const t = s("text", {x:x(mi[mm]), y:H-8, "text-anchor":"middle", "font-size":11, fill:"var(--muted)", "font-family":"var(--f-mono)"});
+    t.textContent = mm.slice(0,4); svg.append(t); });
+
+  const path = pts => pts.map((p,i) => (i ? "L" : "M") + x(mi[p[0]]).toFixed(1) + " " + y(p[1]).toFixed(1)).join("");
+  series.filter(sr => sr.isin !== state.sel).forEach(sr => svg.append(s("path", {d:path(sr.pts), fill:"none", stroke:"var(--series-lo)", "stroke-width":1.25, "stroke-linejoin":"round"})));
+  svg.append(s("line", {x1:m.l, x2:W-m.r, y1:y(0), y2:y(0), stroke:"var(--zero)", "stroke-width":1.5}));
+  if (selF){
+    svg.append(s("path", {d:path(selF.pts), fill:"none", stroke:"var(--surface)", "stroke-width":5, "stroke-linejoin":"round"}));
+    svg.append(s("path", {d:path(selF.pts), fill:"none", stroke:"var(--series-hi)", "stroke-width":2, "stroke-linejoin":"round"}));
+    const last = selF.pts[selF.pts.length-1];
+    svg.append(s("circle", {cx:x(mi[last[0]]), cy:y(last[1]), r:4, fill:"var(--series-hi)", stroke:"var(--surface)", "stroke-width":2}));
+  }
+  const cross = s("line", {y1:m.t, y2:H-m.b, stroke:"var(--muted)", "stroke-width":1, visibility:"hidden"});
+  const dot = s("circle", {r:4.5, fill:"var(--series-hi)", stroke:"var(--surface)", "stroke-width":2, visibility:"hidden"});
+  svg.append(cross, dot);
+  const hit = s("rect", {x:m.l, y:0, width:W-m.l-m.r, height:H, fill:"transparent"});
+  svg.append(hit);
+  box.prepend(svg);
+
+  const lookup = sr => Object.fromEntries(sr.pts);
+  const maps = series.map(sr => ({sr, map: lookup(sr)}));
+  function move(ev){
+    const r = svg.getBoundingClientRect();
+    const px = (ev.clientX - r.left) * (W / r.width);
+    const i = Math.max(0, Math.min(months.length-1, Math.round((px - m.l) / (W - m.l - m.r) * (months.length - 1))));
+    const mm = months[i];
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("visibility", "visible");
+    const sv = selF && lookup(selF)[mm];
+    if (sv != null){ dot.setAttribute("cx", x(i)); dot.setAttribute("cy", y(sv)); dot.setAttribute("visibility", "visible"); } else dot.setAttribute("visibility", "hidden");
+    const rows = maps.filter(o => o.map[mm] != null).sort((a,b) => b.map[mm] - a.map[mm]).map(o => {
+      const isSel = o.sr.isin === state.sel;
+      return h("div", {class:"row", style: isSel ? "font-weight:600" : null},
+        h("span", null, h("i", {class:"key", style:`background:var(${isSel ? "--series-hi" : "--series-lo"})`}), o.sr.nome.length > 26 ? o.sr.nome.slice(0,25) + "…" : o.sr.nome),
+        h("b", {text: pp(o.map[mm])}));
+    });
+    tip.replaceChildren(h("div", {class:"muted", style:"margin-bottom:4px", text:"12 mesi a " + mm}), ...rows);
+    tip.hidden = false;
+    const bw = box.clientWidth, tw = tip.offsetWidth;
+    const left = (ev.clientX - box.getBoundingClientRect().left);
+    tip.style.left = Math.max(0, Math.min(bw - tw, left + 14 > bw - tw ? left - tw - 14 : left + 14)) + "px";
+    tip.style.top = "8px";
+  }
+  hit.addEventListener("pointermove", move);
+  hit.addEventListener("pointerdown", move);
+  hit.addEventListener("pointerleave", () => { tip.hidden = true; cross.setAttribute("visibility","hidden"); dot.setAttribute("visibility","hidden"); });
+}
+function niceStep(raw){ const p = Math.pow(10, Math.floor(Math.log10(raw || 0.01))); const f = raw / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p; }
+
+/* ---------------- persistenza ---------------- */
+function matrix(mat, extra){
+  const tot = mat.flat().reduce((a,b) => a+b, 0);
+  if (!tot) return h("p", {class:"small muted", text:"Non calcolabile: servono almeno 4 fondi con 6 anni di storico (classi ad accumulo)."});
+  const shade = v => v >= .5 ? "--seq-4" : v >= .375 ? "--seq-3" : v >= .25 ? "--seq-2" : v >= .125 ? "--seq-1" : "--seq-0";
+  const ink = v => v >= .375 ? "var(--seq-ink-hi)" : "var(--ink)";
+  const diag = mat.reduce((a,r,i) => a + r[i], 0);
+  const topStay = mat[0].reduce((a,b)=>a+b,0) ? mat[0][0] / mat[0].reduce((a,b)=>a+b,0) : null;
+  const t = h("table", {class:"mx"},
+    h("thead", null, h("tr", null, h("th", {text:"prima ↓ / dopo →"}), ...[1,2,3,4].map(q => h("th", {text:"Q" + q})))),
+    h("tbody", null, mat.map((row,i) => {
+      const rt = row.reduce((a,b)=>a+b,0);
+      return h("tr", null, h("th", {text:"Q" + (i+1) + (i===0 ? " (migliori)" : i===3 ? " (peggiori)" : "")}),
+        ...row.map(v => { const sh = rt ? v/rt : 0;
+          return h("td", {style:`background:var(${shade(sh)});color:${ink(sh)}`, title:`${v} casi su ${rt}`, text: rt ? Math.round(sh*100) + "%" : "—"}); }));
+    })));
+  return h("div", null, h("div", {class:"tbl-wrap", style:"border:0"}, t),
+    h("p", {class:"small", style:"margin:8px 0 0"},
+      `${tot} transizioni. Restano nello stesso quartile: ${Math.round(diag/tot*100)}% (25% atteso senza persistenza). ` +
+      (topStay != null ? `Dei fondi nel quartile migliore, ${Math.round(topStay*100)}% ci resta. ` : "") + (extra || "")));
+}
+function renderPers(c){
+  const p = c.persistenza;
+  const rho = p.spearman_medio == null ? "" : `ρ di Spearman medio ${n2(p.spearman_medio)} su ${p.date.length} date di formazione.`;
+  $("pers-cat-h").textContent = c.nome;
+  $("pers-cat").replaceChildren(matrix(p.matrice, rho));
+}
+
+function renderNF(){
+  const nf = state.data.non_trovati || [];
+  $("nf-panel").hidden = !nf.length;
+  if (!nf.length) return;
+  $("nf").replaceChildren(
+    h("thead", null, h("tr", null, ...["Strumento","ISIN","Tipo","Categoria","Motivo"].map(t => h("th", {text:t})))),
+    h("tbody", null, nf.map(r => h("tr", {style:"cursor:default"}, h("td", {text:r.nome}), h("td", {class:"num", style:"text-align:left", text:r.isin}),
+      h("td", {style:"text-align:left", text:r.tipo}), h("td", {style:"text-align:left", text:r.categoria || ""}), h("td", {style:"text-align:left;white-space:normal;min-width:240px", text:r.motivo})))));
+}
+
+async function init(){
+  state.data = await load();
+  if (!state.data){
+    $("app").append(h("div", {class:"banner", text:"Dati non ancora disponibili: il file data/fondi_vs_etf.json viene creato dal primo aggiornamento settimanale (o avviandolo a mano dal tab Actions di GitHub)."}));
+    return;
+  }
+  let saved = null; try { saved = localStorage.getItem("fve-cat"); } catch(e){}
+  const cats = state.data.categorie;
+  const ix = cats.findIndex(c => c.nome === saved);
+  state.cat = ix >= 0 ? ix : 0;
+  $("cat").replaceChildren(...cats.map((c,i) => h("option", {value:String(i), text:`${c.nome} (${c.fondi.length} fondi)`})));
+  $("cat").value = String(state.cat);
+  $("cat").addEventListener("change", e => { state.cat = +e.target.value; state.sel = null; try { localStorage.setItem("fve-cat", cats[state.cat].nome); } catch(e){} renderCat(); });
+  const setView = v => { state.view = v; $("v-extra").setAttribute("aria-pressed", String(v==="extra")); $("v-rend").setAttribute("aria-pressed", String(v==="rend")); renderTable(cats[state.cat]); };
+  $("v-extra").addEventListener("click", () => setView("extra"));
+  $("v-rend").addEventListener("click", () => setView("rend"));
+  renderMeta(); renderCat(); renderNF();
+  if (EMB){
+    document.querySelector(".crumb").hidden = true;
+    const post = () => { try { parent.postMessage({fveH: document.documentElement.scrollHeight}, "*"); } catch(e){} };
+    post(); new ResizeObserver(post).observe(document.body);
+  }
+  const gp = state.data.persistenza_globale;
+  $("pers-glob").replaceChildren(matrix(gp.matrice));
+  let t; window.addEventListener("resize", () => { clearTimeout(t); t = setTimeout(() => renderChart(cats[state.cat]), 150); });
+}
+init();
+})();
+</script>
+</body>
+</html>
